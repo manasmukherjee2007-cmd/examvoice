@@ -3,3 +3,5 @@ requests
 python-dotenv
 pypdf
 google-generativeai
+python-docx
+pillow
