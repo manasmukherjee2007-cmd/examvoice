@@ -3,6 +3,8 @@ import re
 import requests
 import streamlit as st
 from dotenv import load_dotenv
+import google.generativeai as genai
+from PIL import Image
 
 # Load environment variables
 load_dotenv()
@@ -222,3 +224,48 @@ if uploaded_file:
                             st.error(f"Rime API Error ({resp.status_code}): {resp.text}")
                     except requests.exceptions.RequestException as e:
                         st.error(f"Request failed: {e}")
+                        st.markdown("---")
+st.header("📷 Image to Voice Description")
+
+# Retrieve Gemini API Key
+gemini_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+
+if gemini_key:
+    genai.configure(api_key=gemini_key)
+
+uploaded_img = st.file_uploader(
+    "Upload an image for analysis", type=["jpg", "jpeg", "png"]
+)
+
+if uploaded_img is not None:
+    image = Image.open(uploaded_img)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
+
+    if st.button("Analyze & Speak"):
+        if not gemini_key:
+            st.error("Gemini API key is missing in Streamlit Secrets!")
+        else:
+            with st.spinner("Analyzing image content..."):
+                try:
+                    # Using Gemini 1.5 Flash for quick vision analysis
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    prompt = "Describe the key details in this image concisely in 2 clear sentences so it can be read aloud to a visually impaired user."
+                    response = model.generate_content([prompt, image])
+                    analysis_text = response.text
+
+                    st.write("### AI Analysis:")
+                    st.info(analysis_text)
+
+                    # Pass description to your Rime Voice pipeline
+                    with st.spinner("Generating voice explanation..."):
+                        audio_data = generate_rime_speech(
+                            text=analysis_text,
+                            speaker_id=speaker_id,
+                            model_id=model_id,
+                            speed_alpha=playback_speed,
+                        )
+                        if audio_data:
+                            st.audio(audio_data, format="audio/wav")
+                            st.success("Audio analysis ready!")
+                except Exception as e:
+                    st.error(f"Error analyzing image: {e}")
