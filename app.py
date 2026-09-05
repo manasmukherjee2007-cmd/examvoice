@@ -247,8 +247,8 @@ if uploaded_img is not None:
         else:
             with st.spinner("Analyzing image content..."):
                 try:
-                    # Using Gemini 2.5 Flash for quick vision analysis
-                    model = genai.GenerativeModel("gemini-2.5-flash")
+                    # Initialize model directly
+                    model = genai.GenerativeModel("gemini-2.0-flash")
                     prompt = "Describe the key details in this image concisely in 2 clear sentences so it can be read aloud to a visually impaired user."
                     response = model.generate_content([prompt, image])
                     analysis_text = response.text
