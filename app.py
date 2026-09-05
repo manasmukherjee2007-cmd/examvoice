@@ -70,7 +70,7 @@ st.caption("A voice-native application solving muddled speech for hall tickets a
 
 # Sidebar Controls
 st.sidebar.header("Rime Engine Settings")
-speaker_id = st.sidebar.text_input("Speaker ID", value="masonry")
+speaker_id = st.sidebar.text_input("Speaker ID", value="astra")
 model_id = st.sidebar.selectbox("Model", ["coda", "mist"], index=0)
 playback_speed = st.sidebar.slider("Speech Speed (speedAlpha)", min_value=0.5, max_value=1.2, value=0.85, step=0.05)
 
@@ -131,3 +131,94 @@ if st.button("Generate & Compare Delivery", type="primary"):
 
 st.markdown("---")
 st.markdown("**Hackathon Acceptance Test Note:** This test demonstrates how ExamVoice addresses *Pronunciation & Controlled Delivery* by inserting structured pauses and adjusting `speedAlpha` for ear-accessibility.")
+import os
+import requests
+import streamlit as st
+from pypdf import PdfReader
+import docx
+
+# Streamlit Page Config
+st.set_page_config(page_title="ExamVoice AI", page_icon="🎙️")
+st.title("🎙️ ExamVoice AI")
+st.caption("Upload documents and listen via Rime AI TTS")
+
+# API Configuration
+# Best practice: Add RIME_API_KEY to your Streamlit Secrets or environment variables
+RIME_API_KEY = st.secrets.get("RIME_API_KEY") or os.getenv("RIME_API_KEY")
+
+if not RIME_API_KEY:
+    RIME_API_KEY = st.sidebar.text_input("Enter Rime API Key", type="password")
+
+# Voice selection sidebar
+speaker = st.sidebar.selectbox("Select Speaker", ["celeste", "luna", "cove", "mist"])
+speed = st.sidebar.slider("Speed (Alpha)", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
+
+# Document extraction helper
+def extract_text(uploaded_file):
+    text = ""
+    if uploaded_file.name.endswith(".pdf"):
+        reader = PdfReader(uploaded_file)
+        for page in reader.pages:
+            extracted = page.extract_text()
+            if extracted:
+                text += extracted + "\n"
+    elif uploaded_file.name.endswith(".docx"):
+        doc = docx.Document(uploaded_file)
+        text = "\n".join([p.text for p in doc.paragraphs])
+    elif uploaded_file.name.endswith(".txt"):
+        text = uploaded_file.read().decode("utf-8")
+    return text.strip()
+
+# Rime AI TTS API caller
+def generate_rime_speech(text, speaker, speed, api_key):
+    url = "https://users.rime.ai/v1/rime-tts"
+    headers = {
+        "Accept": "audio/mp3",
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "text": text,
+        "modelId": "coda",
+        "speaker": speaker,
+        "speedAlpha": speed,
+        "samplingRate": 22050,
+        "pauseBetweenBrackets": True,
+    }
+
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    return response
+
+# Main UI
+uploaded_file = st.file_uploader("Upload a document (.pdf, .docx, .txt)", type=["pdf", "docx", "txt"])
+
+if uploaded_file:
+    extracted_text = extract_text(uploaded_file)
+    
+    if not extracted_text:
+        st.error("No readable text found in the uploaded file.")
+    else:
+        # Allow user to preview or edit the text before generating audio
+        spoken_text = st.text_area("Text to be read aloud:", value=extracted_text[:1500], height=200)
+        st.info("Note: Showing the first segment to prevent exceeding API payload limits.")
+
+        if st.button("Generate Audio"):
+            if not RIME_API_KEY:
+                st.error("Please provide a valid Rime API Key.")
+            else:
+                with st.spinner("Generating speech via Rime AI..."):
+                    try:
+                        resp = generate_rime_speech(spoken_text, speaker, speed, RIME_API_KEY)
+                        if resp.status_code == 200:
+                            st.success("Audio generated successfully!")
+                            st.audio(resp.content, format="audio/mp3")
+                            st.download_button(
+                                label="Download MP3",
+                                data=resp.content,
+                                file_name="exam_voice_audio.mp3",
+                                mime="audio/mp3",
+                            )
+                        else:
+                            st.error(f"Rime API Error ({resp.status_code}): {resp.text}")
+                    except requests.exceptions.RequestException as e:
+                        st.error(f"Request failed: {e}")
